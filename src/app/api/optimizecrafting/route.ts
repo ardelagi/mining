@@ -33,7 +33,7 @@ function applyCustomPrices(
     ...newData.perhiasan,
   };
 
-  for (const [key, item] of Object.entries(all)) {
+  for (const [key, _] of Object.entries(all)) {
     const normalizedKey = normalize(key);
 
     if (customPrices.tambang?.[normalizedKey]) {
@@ -84,85 +84,6 @@ const time = (s: number): string => {
   return result.trim();
 };
 
-function calculateDependencyChain(
-  itemName: string,
-  quantity: number,
-  miningData: MiningData,
-  memo: Record<string, DependencyChain> = {}
-): DependencyChain {
-  const key = `${itemName}_${quantity}`;
-  if (memo[key]) return memo[key];
-
-  const allItems = { ...miningData.tambang, ...miningData.perhiasan };
-  const itemData = allItems[itemName];
-
-  if (!itemData) {
-    memo[key] = {
-      rawMaterials: { [itemName]: quantity },
-      productionSteps: [],
-      totalTime: 0,
-      totalProfit: 0,
-    };
-    return memo[key];
-  }
-
-  const requirements = itemData.require || {};
-  const totalRawMaterials: Record<string, number> = {};
-  const allProductionSteps: ProductionStep[] = [];
-  let totalTime = quantity * 15;
-  let totalProfit = itemData.price * quantity;
-
-  if (Object.keys(requirements).length === 0) {
-    memo[key] = {
-      rawMaterials: { [itemName]: quantity },
-      productionSteps: [],
-      totalTime: 0,
-      totalProfit: 0,
-    };
-    return memo[key];
-  }
-
-  for (const [reqItem, reqQty] of Object.entries(requirements)) {
-    const totalReqQty = (reqQty as number) * quantity;
-    const depChain = calculateDependencyChain(
-      reqItem,
-      totalReqQty,
-      miningData,
-      memo
-    );
-    totalTime += depChain.totalTime;
-    totalProfit += depChain.totalProfit;
-
-    for (const [rawItem, rawQty] of Object.entries(depChain.rawMaterials)) {
-      totalRawMaterials[rawItem] = (totalRawMaterials[rawItem] || 0) + rawQty;
-    }
-
-    allProductionSteps.push(...depChain.productionSteps);
-  }
-
-  if (Object.keys(requirements).length > 0) {
-    allProductionSteps.push({
-      itemName,
-      quantity,
-      requirements: Object.entries(requirements).map(([item, qty]) => ({
-        item,
-        quantity: (qty as number) * quantity,
-      })),
-      time: quantity * 15,
-      profit: itemData.price * quantity,
-    });
-  }
-
-  const result: DependencyChain = {
-    rawMaterials: totalRawMaterials,
-    productionSteps: allProductionSteps,
-    totalTime,
-    totalProfit,
-  };
-
-  memo[key] = result;
-  return result;
-}
 
 function calculateDependencyChainWithInventory(
   itemName: string,
