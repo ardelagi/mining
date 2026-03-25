@@ -17,9 +17,14 @@ const typedMiningData = miningData as MiningData;
 const normalize = (str: string) =>
   str.toLowerCase().replace(/\s+/g, "_");
 
+type CustomPrices = {
+  tambang?: Record<string, { price: number }>;
+  perhiasan?: Record<string, { price: number }>;
+};
+
 function applyCustomPrices(
   baseData: MiningData,
-  customPrices: Record<string, any> = {}
+  customPrices: CustomPrices = {}
 ): MiningData {
   const newData: MiningData = JSON.parse(JSON.stringify(baseData));
 
