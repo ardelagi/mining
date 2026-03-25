@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import BackgroundGrid from "@/app/components/backgroundGrid";
 import Navigation from "@/app/components/navigation";
 import miningData from "@/data/mining.json";
@@ -31,7 +31,14 @@ export default function InfoPage() {
   const [sortOrder, setSortOrder] = useState<"desc" | "asc">("desc");
   const [selectedRecommendation, setSelectedRecommendation] = useState<RecommendationFilter>("all");
 
-  const typedMiningData = miningData as MiningData;
+  const [typedMiningData, setTypedMiningData] = useState<MiningData>(miningData as MiningData);
+
+  useEffect(() => {
+    const saved = localStorage.getItem("customPrices");
+    if (saved) {
+      setTypedMiningData(JSON.parse(saved));
+    }
+  }, []);
 
   const formatItemName = (name: string): string => {
     return name.replace(/_/g, " ").replace(/\b\w/g, (l) => l.toUpperCase());
