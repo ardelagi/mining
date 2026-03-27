@@ -1,69 +1,74 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { DollarSign, Coins, Gem, Diamond, Star } from "lucide-react";
 import { FloatingIcon } from "@/types";
 
+const ICONS = ["◆", "◇", "⬡", "⬟", "▲", "△", "✦", "✧"];
+const COLORS = [
+  "rgba(57,211,83,0.12)",
+  "rgba(88,166,255,0.1)",
+  "rgba(188,140,255,0.1)",
+  "rgba(212,160,23,0.1)",
+  "rgba(240,136,62,0.08)",
+];
+
 export default function BackgroundGrid() {
-  const [floatingIcons, setFloatingIcons] = useState<FloatingIcon[]>([]);
+  const [icons, setIcons] = useState<FloatingIcon[]>([]);
 
   useEffect(() => {
-    const icons: FloatingIcon[] = [];
-
-    for (let i = 0; i < 30; i++) {
-      icons.push({
-        id: i,
-        x: Math.random() * 100,
-        y: Math.random() * 100,
-        scale: Math.random() * 0.4 + 0.6,
-        rotation: Math.random() * 360,
-        animationDelay: Math.random() * 8,
-        animationDuration: Math.random() * 15 + 10,
-        iconType: Math.floor(Math.random() * 5),
-      });
-    }
-
-    setFloatingIcons(icons);
+    const list: FloatingIcon[] = Array.from({ length: 24 }, (_, i) => ({
+      id: i,
+      x: Math.random() * 100,
+      y: Math.random() * 100,
+      scale: Math.random() * 0.6 + 0.4,
+      rotation: Math.random() * 360,
+      animationDelay: Math.random() * 10,
+      animationDuration: Math.random() * 18 + 12,
+      iconType: Math.floor(Math.random() * ICONS.length),
+    }));
+    setIcons(list);
   }, []);
 
   return (
     <div className="fixed inset-0 overflow-hidden pointer-events-none z-0">
-      {/* Grid */}
-      <div className="absolute inset-0 grid-bg opacity-10" />
-      <div className="absolute inset-0 grid-bg-fine opacity-20" />
+      {/* Base grid */}
+      <div className="absolute inset-0 grid-bg" />
 
-      {/* Floating Icons */}
-      {floatingIcons.map((icon) => {
-        const iconTypes = [DollarSign, Coins, Gem, Diamond, Star];
-        const IconComponent = iconTypes[icon.iconType];
+      {/* Radial glow */}
+      <div
+        className="absolute inset-0"
+        style={{
+          background:
+            "radial-gradient(ellipse 60% 50% at 20% 30%, rgba(57,211,83,0.04) 0%, transparent 70%), radial-gradient(ellipse 50% 60% at 80% 70%, rgba(88,166,255,0.04) 0%, transparent 70%)",
+        }}
+      />
 
-        const colors = [
-          "text-green-400/40",
-          "text-yellow-400/40",
-          "text-purple-400/40",
-          "text-blue-400/40",
-          "text-pink-400/40",
-        ];
+      {/* Floating symbols */}
+      {icons.map((icon) => (
+        <div
+          key={icon.id}
+          className="floating-icon absolute select-none"
+          style={{
+            left: `${icon.x}%`,
+            top: `${icon.y}%`,
+            fontSize: `${icon.scale * 20}px`,
+            color: COLORS[icon.iconType % COLORS.length],
+            "--dur": `${icon.animationDuration}s`,
+            "--delay": `${icon.animationDelay}s`,
+          } as React.CSSProperties}
+        >
+          {ICONS[icon.iconType]}
+        </div>
+      ))}
 
-        return (
-          <div
-            key={icon.id}
-            className={`absolute ${colors[icon.iconType]} floating-icon blur-[0.5px]`}
-            style={{
-              left: `${icon.x}%`,
-              top: `${icon.y}%`,
-              transform: `scale(${icon.scale}) rotate(${icon.rotation}deg)`,
-              animationDelay: `${icon.animationDelay}s`,
-              animationDuration: `${icon.animationDuration}s`,
-            }}
-          >
-            <IconComponent size={36} strokeWidth={1.8} />
-          </div>
-        );
-      })}
-
-      {/* Overlay (FIXED) */}
-      <div className="absolute inset-0 bg-gradient-to-br from-slate-950/40 via-slate-950/30 to-slate-950/40" />
+      {/* Top/bottom vignette */}
+      <div
+        className="absolute inset-0"
+        style={{
+          background:
+            "linear-gradient(to bottom, rgba(8,12,16,0.6) 0%, transparent 15%, transparent 85%, rgba(8,12,16,0.7) 100%)",
+        }}
+      />
     </div>
   );
 }

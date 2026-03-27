@@ -7,818 +7,594 @@ import {
   RequirementInfo,
   MiningData,
 } from "@/types";
-import { useEffect, useState } from "react";
-import Image from "next/image";
+import { useEffect, useState, useCallback } from "react";
 import miningData from "@/data/mining.json";
 import {
-  Package,
   Zap,
-  TrendingUp,
+  Package,
+  BarChart3,
   Clock,
   DollarSign,
-  Settings,
+  CheckCheck,
+  RotateCcw,
   ChevronDown,
-  Sparkles,
-  Target,
+  Layers,
+  Gem,
+  Circle,
   CheckCircle2,
   CircleX,
-  Hammer,
+  TrendingUp,
   Coins,
-  Timer,
-  Activity,
+  AlertCircle,
+  ShoppingBag,
 } from "lucide-react";
 
+/* ── Constants ─────────────────────────────────────────────── */
 
-const materialCategories = {
-  "Raw Materials": [
-    "copper_ore",
-    "iron_ore",
-    "gold_ore",
-    "silver_ore",
-    "alluminium_ore",
-    "coal",
-    "uncut_sapphire",
-    "uncut_diamond",
-    "uncut_ruby",
-    "uncut_emerald",
-  ],
-  Ingots: [
-    "copper_ingot",
-    "iron_ingot",
-    "gold_ingot",
-    "silver_ingot",
-    "alluminium_ingot",
-    "steel_ingot",
-    "sapphire",
-    "diamond",
-    "ruby",
-    "emerald",
-  ],
-  Rings: [
-    "gold_ring",
-    "silver_ring",
-    "emerald_ring",
-    "ruby_ring",
-    "sapphire_ring",
-    "diamond_ring_silver",
-    "emerald_ring_silver",
-    "ruby_ring_silver",
-    "sapphire_ring_silver",
-  ],
-  Earrings: [
-    "gold_earring",
-    "silver_earring",
-    "diamond_earring",
-    "ruby_earring",
-    "sapphire_earring",
-    "emerald_earring",
-    "diamond_earring_silver",
-    "ruby_earring_silver",
-    "sapphire_earring_silver",
-    "emerald_earring_silver",
-  ],
-  Necklaces: [
-    "gold_chain",
-    "silver_chain",
-    "ruby_necklace",
-    "sapphire_necklace",
-    "emerald_necklace",
-    "diamond_necklace_silver",
-    "ruby_necklace_silver",
-    "emerald_necklace_silver",
-    "sapphire_necklace_silver",
-  ],
-};
+const CATEGORIES = {
+  "Raw Materials": {
+    icon: Package,
+    items: [
+      "copper_ore","iron_ore","gold_ore","silver_ore","alluminium_ore",
+      "coal","uncut_sapphire","uncut_diamond","uncut_ruby","uncut_emerald",
+    ],
+  },
+  Ingots: {
+    icon: Layers,
+    items: [
+      "copper_ingot","iron_ingot","gold_ingot","silver_ingot","alluminium_ingot",
+      "steel_ingot","sapphire","diamond","ruby","emerald",
+    ],
+  },
+  Rings: {
+    icon: Circle,
+    items: [
+      "gold_ring","silver_ring","emerald_ring","ruby_ring","sapphire_ring",
+      "diamond_ring_silver","emerald_ring_silver","ruby_ring_silver","sapphire_ring_silver",
+    ],
+  },
+  Earrings: {
+    icon: Gem,
+    items: [
+      "gold_earring","silver_earring","diamond_earring","ruby_earring",
+      "sapphire_earring","emerald_earring","diamond_earring_silver",
+      "ruby_earring_silver","sapphire_earring_silver","emerald_earring_silver",
+    ],
+  },
+  Necklaces: {
+    icon: Coins,
+    items: [
+      "gold_chain","silver_chain","ruby_necklace","sapphire_necklace",
+      "emerald_necklace","diamond_necklace_silver","ruby_necklace_silver",
+      "emerald_necklace_silver","sapphire_necklace_silver",
+    ],
+  },
+} as const;
 
-const categoryIcons = {
-  "Raw Materials": Package,
-  Ingots: Coins,
-  Rings: Target,
-  Earrings: Sparkles,
-  Necklaces: Activity,
-};
+type CatKey = keyof typeof CATEGORIES;
 
-const createEmptyInventory = (): Inventory => {
-  const inventory: Inventory = {};
-  Object.values(materialCategories)
-    .flat()
-    .forEach((item) => {
-      inventory[item] = 0;
-    });
-  return inventory;
-};
+const fmt = (n: string) =>
+  n.replace(/_/g, " ").replace(/\b\w/g, (l) => l.toUpperCase());
+
+const fmtUSD = (n: number) =>
+  new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  }).format(n);
+
+const createEmpty = (): Inventory =>
+  Object.values(CATEGORIES)
+    .flatMap((c) => c.items)
+    .reduce((acc, k) => ({ ...acc, [k]: 0 }), {});
+
+/* ── Component ─────────────────────────────────────────────── */
 
 export default function CraftingOptimizer() {
-  const [typedMiningData, setTypedMiningData] = useState<MiningData>(
-    miningData as MiningData
-  );
+  const [mData, setMData] = useState<MiningData>(miningData as MiningData);
+  const [inventory, setInventory] = useState<Inventory>(createEmpty());
+  const [result, setResult] = useState<OptimizationResult["data"] | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<CatKey>("Raw Materials");
+  const [completed, setCompleted] = useState<Set<number>>(new Set());
+  const [catOpen, setCatOpen] = useState(false);
 
   useEffect(() => {
     const saved = localStorage.getItem("customPrices");
-    if (saved) {
-      setTypedMiningData(JSON.parse(saved));
-    }
+    if (saved) setMData(JSON.parse(saved));
   }, []);
-  const [inventory, setInventory] = useState<Inventory>(createEmptyInventory());
-  const [result, setResult] = useState<OptimizationResult["data"] | null>(null);
-  const [loading, setLoading] = useState<boolean>(false);
-  const [error, setError] = useState<string | null>(null);
-  const [activeCategory, setActiveCategory] = useState<string>("Raw Materials");
-  const [showCategories, setShowCategories] = useState<boolean>(false);
-  const [completedSteps, setCompletedSteps] = useState<Set<number>>(new Set());
 
-  const handleOptimize = async (): Promise<void> => {
+  const allItems = { ...mData.tambang, ...mData.perhiasan };
+
+  const totalItems = Object.values(inventory).reduce((s, v) => s + v, 0);
+
+  const getPrice = (k: string) => allItems[k]?.price ?? 0;
+
+  const handleChange = useCallback((k: string, val: string) => {
+    const n = parseInt(val.replace(/\D/g, "")) || 0;
+    setInventory((p) => ({ ...p, [k]: Math.max(0, n) }));
+  }, []);
+
+  const handleOptimize = async () => {
     setLoading(true);
     setError(null);
-
+    setCompleted(new Set());
     try {
-      const response = await fetch("/api/optimizecrafting", {
+      const cp = JSON.parse(localStorage.getItem("customPrices") || "{}");
+      const res = await fetch("/api/optimizecrafting", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          inventory,
-          customPrices: JSON.parse(localStorage.getItem("customPrices") || "{}")
-         }),
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ inventory, customPrices: cp }),
       });
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      const contentType = response.headers.get("content-type");
-      if (!contentType || !contentType.includes("application/json")) {
-        const text = await response.text();
-        console.error("Non-JSON response:", text);
-        throw new Error(
-          "API endpoint returned HTML instead of JSON. Please check if /api/optimizecrafting exists."
-        );
-      }
-
-      const data: OptimizationResult = await response.json();
-
-      if (!data.success) {
-        throw new Error(data.error || "Unknown error occurred");
-      }
-
-      setResult(data.data || null);
-    } catch (err) {
-      let errorMessage = "An unknown error occurred";
-
-      if (err instanceof Error) {
-        if (err.message.includes("<!DOCTYPE")) {
-          errorMessage =
-            "API endpoint not found. Please create /api/optimizecrafting endpoint.";
-        } else {
-          errorMessage = err.message;
-        }
-      }
-
-      setError(errorMessage);
-      console.error("Optimization error:", err);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data: OptimizationResult = await res.json();
+      if (!data.success) throw new Error(data.error || "Unknown error");
+      setResult(data.data ?? null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Unknown error");
     } finally {
       setLoading(false);
     }
   };
-  const handleInventoryChange = (item: string, value: string): void => {
-    const cleanValue = value.replace(/[^\d]/g, "");
-    const numValue = parseInt(cleanValue) || 0;
-    setInventory((prev) => ({
-      ...prev,
-      [item]: Math.max(0, numValue),
-    }));
+
+  const toggleDone = (i: number) =>
+    setCompleted((p) => {
+      const s = new Set(p);
+      s.has(i) ? s.delete(i) : s.add(i);
+      return s;
+    });
+
+  const tierOf = (v: number, steps: OptimizedStep[]) => {
+    if (!steps.length) return "mid";
+    const vals = steps.map((s) => s.value).sort((a, b) => b - a);
+    const p25 = vals[Math.floor(vals.length * 0.25)] ?? 0;
+    const p75 = vals[Math.floor(vals.length * 0.75)] ?? 0;
+    if (v >= p25) return "high";
+    if (v <= p75) return "low";
+    return "mid";
   };
 
-  const formatDisplayValue = (value: number): string => {
-    if (value === 0) return "";
-    return value.toLocaleString();
+  const tierStyle = {
+    high: { bar: "var(--accent-green)",  val: "var(--accent-green)",  tag: "tag-green" },
+    mid:  { bar: "var(--accent-blue)",   val: "var(--accent-blue)",   tag: "tag-blue" },
+    low:  { bar: "var(--accent-orange)", val: "var(--accent-orange)", tag: "tag-orange" },
   };
 
-  const formatCurrency = (amount: number): string => {
-    return new Intl.NumberFormat("en-US", {
-      style: "currency",
-      currency: "USD",
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0,
-    }).format(amount);
-  };
+  const CurIcon = CATEGORIES[activeTab].icon;
 
-  const formatItemName = (name: string): string => {
-    return name.replace(/_/g, " ").replace(/\b\w/g, (l) => l.toUpperCase());
-  };
-  const getTotalItems = (): number => {
-    return Object.values(inventory).reduce((sum, count) => sum + count, 0);
-  };
-  const getItemPrice = (itemName: string): number => {
-    const allItems = {
-      ...typedMiningData.tambang,
-      ...typedMiningData.perhiasan,
-    };
-    return allItems[itemName]?.price || 0;
-  };
-  const toggleStepCompletion = (stepIndex: number): void => {
-    const isCompleted = completedSteps.has(stepIndex);
-
-    if (isCompleted) {
-      setCompletedSteps((prev) => {
-        const newSet = new Set(prev);
-        newSet.delete(stepIndex);
-        return newSet;
-      });
-    } else {
-      setCompletedSteps((prev) => new Set([...prev, stepIndex]));
-    }
-  };
-
-  const resetCompletedSteps = (): void => {
-    setCompletedSteps(new Set());
-    if (result) {
-      handleOptimize();
-    }
-  };
-
-  const CategoryIcon =
-    categoryIcons[activeCategory as keyof typeof categoryIcons];
-
-  const getProfitTier = (
-    stepValue: number,
-    allSteps: OptimizedStep[]
-  ): string => {
-    if (allSteps.length === 0) return "medium";
-
-    const values = allSteps.map((step) => step.value).sort((a, b) => b - a);
-    const q1Index = Math.floor(values.length * 0.25);
-    const q3Index = Math.floor(values.length * 0.75);
-
-    const highThreshold = values[q1Index] || 0;
-    const lowThreshold = values[q3Index] || 0;
-
-    if (stepValue >= highThreshold) return "high";
-    if (stepValue <= lowThreshold) return "low";
-    return "medium";
-  };
-
-  const getProfitColors = (tier: string) => {
-    switch (tier) {
-      case "high":
-        return {
-          border: "border-green-500/70",
-          bg: "bg-green-900/30",
-          glow: "hover:shadow-green-500/30",
-          text: "text-green-300",
-          icon: "text-green-400",
-        };
-      case "medium":
-        return {
-          border: "border-blue-500/50",
-          bg: "bg-blue-900/20",
-          glow: "hover:shadow-blue-500/20",
-          text: "text-blue-300",
-          icon: "text-blue-400",
-        };
-      case "low":
-        return {
-          border: "border-orange-500/50",
-          bg: "bg-orange-900/20",
-          glow: "hover:shadow-orange-500/20",
-          text: "text-orange-300",
-          icon: "text-orange-400",
-        };
-      default:
-        return {
-          border: "border-gray-700",
-          bg: "bg-gray-800/50",
-          glow: "hover:shadow-gray-500/20",
-          text: "text-gray-300",
-          icon: "text-gray-400",
-        };
-    }
-  };
   return (
-    <div className="font-mono">
-      {" "}
-      {/* Header */}
-      <div className="bg-slate-900/80 backdrop-blur-sm border border-slate-700/50 rounded-2xl shadow-2xl mb-6">
-        <div className="max-w-full mx-auto px-4 sm:px-6 py-4">
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
-            <div className="flex items-center space-x-4">
-              <div className="p-2 bg-gradient-to-br from-green-400/20 to-blue-500/20 rounded-xl">
-                <Image
-                  src="/imerp.gif"
-                  alt="Crafting Calculator"
-                  width={48}
-                  height={48}
-                  className="h-10 w-10 sm:h-12 sm:w-12 object-contain"
-                />
-              </div>
-              <div className="text-center sm:text-left">
-                {" "}
-                <h2 className="text-lg sm:text-xl font-bold bg-gradient-to-r from-green-400 to-blue-500 bg-clip-text text-transparent">
-                  Kalkulator Crafting
-                </h2>
-                <p className="text-gray-400 text-xs sm:text-sm">
-                  Optimasi strategi crafting terbaik
-                </p>
-              </div>
+    <div style={{ fontFamily: "'JetBrains Mono', monospace" }}>
+
+      {/* ── Top bar ── */}
+      <div
+        className="card mb-6 p-4"
+        style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "12px" }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+          {/* Logo area */}
+          <div
+            style={{
+              width: 44, height: 44, borderRadius: "var(--radius-md)",
+              background: "linear-gradient(135deg, rgba(57,211,83,0.2), rgba(88,166,255,0.15))",
+              border: "1px solid rgba(57,211,83,0.25)",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              fontSize: 22,
+            }}
+          >
+            ⛏
+          </div>
+          <div>
+            <div style={{ fontFamily: "'Syne', sans-serif", fontWeight: 800, fontSize: 18, color: "var(--text-primary)" }}>
+              Crafting Optimizer
             </div>
-            <button
-              onClick={handleOptimize}
-              disabled={loading || getTotalItems() === 0}
-              className="group relative inline-flex items-center px-4 sm:px-6 py-2.5 sm:py-3 bg-gradient-to-r from-green-500 to-blue-600 text-white rounded-xl hover:from-green-600 hover:to-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 font-semibold shadow-lg hover:shadow-green-500/25 transform hover:scale-105 w-full sm:w-auto justify-center"
-            >
-              {" "}
-              {loading ? (
-                <>
-                  <div className="animate-spin -ml-1 mr-3 h-4 w-4 border-2 border-white border-t-transparent rounded-full"></div>
-                  <span>Menghitung...</span>
-                </>
-              ) : (
-                <>
-                  <Zap className="h-4 w-4 mr-2 group-hover:animate-pulse" />
-                  <span>Hitung Optimasi</span>
-                </>
-              )}
-            </button>{" "}
+            <div style={{ fontSize: 11, color: "var(--text-secondary)", letterSpacing: "0.05em" }}>
+              IMERP · Mining &amp; Crafting Calculator
+            </div>
           </div>
         </div>
-      </div>{" "}
-      <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
-        {/* Left Panel - Inventory Input */}
-        <div className="lg:col-span-2">
-          <div className="bg-gray-900 rounded-2xl shadow-2xl border border-gray-800 overflow-hidden min-h-[500px]">
-            <div className="p-4 sm:p-6 border-b border-gray-800 bg-gradient-to-r from-gray-800 to-gray-900">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center space-x-3">
-                  <Package className="h-5 w-5 sm:h-6 sm:w-6 text-blue-400" />
-                  <h2 className="text-lg sm:text-xl font-bold text-white">
-                    Inventory
-                  </h2>
-                </div>{" "}
-                <div className="flex items-center space-x-3">
-                  <div className="flex items-center space-x-2">
-                    <span className="text-xs sm:text-sm text-gray-400">
-                      Total:
-                    </span>
-                    <span className="px-2 sm:px-3 py-1 bg-blue-600 text-white rounded-full text-xs sm:text-sm font-bold min-w-[50px] text-center">
-                      {getTotalItems()}
-                    </span>
-                  </div>
-                  {getTotalItems() > 0 && (
-                    <button
-                      onClick={() => setInventory(createEmptyInventory())}
-                      className="px-2 sm:px-3 py-1 bg-red-600/20 hover:bg-red-600/30 border border-red-600 text-red-400 hover:text-red-300 rounded-full text-xs font-bold transition-all duration-200 min-w-[50px] text-center"
-                      title="Clear semua inventory"
-                    >
-                      Clear
-                    </button>
-                  )}
-                </div>
-              </div>
+
+        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+          {totalItems > 0 && (
+            <span className="tag tag-blue">{totalItems.toLocaleString()} items</span>
+          )}
+          <button
+            className="btn-primary"
+            onClick={handleOptimize}
+            disabled={loading || totalItems === 0}
+          >
+            {loading ? (
+              <>
+                <span className="spin" style={{ display: "inline-block", width: 14, height: 14, border: "2px solid rgba(0,0,0,0.3)", borderTop: "2px solid #000", borderRadius: "50%" }} />
+                Menghitung...
+              </>
+            ) : (
+              <>
+                <Zap size={14} strokeWidth={2.5} />
+                Hitung Optimasi
+              </>
+            )}
+          </button>
+        </div>
+      </div>
+
+      {/* ── Main grid ── */}
+      <div style={{ display: "grid", gridTemplateColumns: "minmax(0,2fr) minmax(0,3fr)", gap: 20 }}>
+
+        {/* Left: Inventory */}
+        <div className="card" style={{ overflow: "hidden" }}>
+          {/* Header */}
+          <div
+            style={{
+              padding: "14px 20px",
+              borderBottom: "1px solid var(--border-subtle)",
+              display: "flex", alignItems: "center", justifyContent: "space-between",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <Package size={15} style={{ color: "var(--accent-blue)" }} />
+              <span style={{ fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 14 }}>Inventory</span>
             </div>
-            {/* Category Selector */}
-            <div className="p-4 sm:p-6 border-b border-gray-800 bg-gray-800/50">
-              <div className="relative">
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              {totalItems > 0 && (
                 <button
-                  onClick={() => setShowCategories(!showCategories)}
-                  className="w-full flex items-center justify-between px-3 sm:px-4 py-2 sm:py-3 bg-gray-800 border border-gray-700 rounded-xl hover:bg-gray-700 transition-all duration-200 group"
+                  className="btn-danger"
+                  onClick={() => setInventory(createEmpty())}
+                  style={{ padding: "4px 10px", fontSize: 11 }}
                 >
-                  <div className="flex items-center space-x-2 sm:space-x-3">
-                    <CategoryIcon className="h-4 w-4 sm:h-5 sm:w-5 text-blue-400" />
-                    <span className="font-semibold text-white text-sm sm:text-base">
-                      {activeCategory}
-                    </span>
-                  </div>
-                  <ChevronDown
-                    className={`h-4 w-4 sm:h-5 sm:w-5 text-gray-400 group-hover:text-white transition-all duration-200 ${
-                      showCategories ? "rotate-180" : ""
-                    }`}
-                  />
+                  <RotateCcw size={11} /> Clear
                 </button>
-
-                {showCategories && (
-                  <div className="absolute top-full left-0 right-0 mt-2 bg-gray-800 border border-gray-700 rounded-xl shadow-2xl z-10 overflow-hidden">
-                    {Object.keys(materialCategories).map((category) => {
-                      const Icon =
-                        categoryIcons[category as keyof typeof categoryIcons];
-                      return (
-                        <button
-                          key={category}
-                          onClick={() => {
-                            setActiveCategory(category);
-                            setShowCategories(false);
-                          }}
-                          className="w-full flex items-center space-x-2 sm:space-x-3 px-3 sm:px-4 py-2 sm:py-3 hover:bg-gray-700 transition-all duration-200 text-left group"
-                        >
-                          <Icon className="h-3 w-3 sm:h-4 sm:w-4 text-blue-400 group-hover:text-blue-300" />
-                          <span className="text-gray-300 group-hover:text-white text-sm sm:text-base">
-                            {category}
-                          </span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            </div>{" "}
-            {/* Items Grid */}
-            <div className="p-4 sm:p-6">
-              <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5 max-h-80 sm:max-h-[800px] overflow-y-auto custom-scrollbar">
-                {materialCategories[
-                  activeCategory as keyof typeof materialCategories
-                ].map((item) => (
-                  <div
-                    key={item}
-                    className="group bg-gray-800 border border-gray-700 rounded-xl p-4 hover:bg-gray-750 hover:border-blue-500/50 transition-all duration-200 flex flex-col min-h-[160px] relative"
-                  >
-                    {/* Price legend or Raw indicator */}
-                    {getItemPrice(item) > 0 ? (
-                      <div className="absolute bottom-2 left-2 right-2">
-                        <div className="bg-gradient-to-r from-green-900/40 via-green-800/30 to-green-900/40 border-t-2 border-green-500/50 px-3 py-1 rounded-lg backdrop-blur-sm">
-                          <div className="flex items-center justify-center space-x-2">
-                            <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
-                            <span className="text-green-400 font-mono font-bold text-xs">
-                              ${getItemPrice(item)}
-                            </span>
-                            <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
-                          </div>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="absolute bottom-2 left-2 right-2">
-                        <div className="bg-gradient-to-r from-orange-900/40 via-orange-800/30 to-orange-900/40 border-t-2 border-orange-500/50 px-3 py-1 rounded-lg backdrop-blur-sm">
-                          <div className="flex items-center justify-center space-x-2">
-                            <div className="w-2 h-2 bg-orange-400 rounded-full animate-pulse"></div>
-                            <span className="text-orange-400 font-mono font-bold text-xs">
-                              Raw
-                            </span>
-                            <div className="w-2 h-2 bg-orange-400 rounded-full animate-pulse"></div>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Input field - positioned at top center */}
-                    <div className="flex items-center justify-center mb-3">
-                      <input
-                        type="text"
-                        value={formatDisplayValue(inventory[item])}
-                        onChange={(e) =>
-                          handleInventoryChange(item, e.target.value)
-                        }
-                        className="w-full bg-gray-900 border-2 border-gray-600 rounded-xl px-4 py-3 text-center font-mono text-lg font-semibold text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 hover:border-gray-500 shadow-inner"
-                        placeholder="0"
-                        style={{ letterSpacing: "0.05em" }}
-                      />
-                    </div>
-
-                    {/* Item name - positioned at center with full width */}
-                    <div className="flex-1 flex items-center justify-center text-center px-2 pb-8">
-                      <span className="text-sm text-gray-300 group-hover:text-white transition-colors font-medium leading-tight block">
-                        {formatItemName(item)}
-                      </span>
-                    </div>
-                  </div>
-                ))}
-              </div>
+              )}
             </div>
           </div>
-        </div>{" "}
-        {/* Right Panel - Results */}
-        <div className="lg:col-span-3">
-          <div className="bg-gray-900 rounded-2xl shadow-2xl border border-gray-800 overflow-hidden min-h-[500px]">
-            {" "}
-            <div className="p-4 sm:p-6 border-b border-gray-800 bg-gradient-to-r from-gray-800 to-gray-900">
-              <div className="flex items-center justify-between">
-                {" "}
-                <div className="flex items-center space-x-3">
-                  <TrendingUp className="h-5 w-5 sm:h-6 sm:w-6 text-green-400" />
-                  <h2 className="text-lg sm:text-xl font-bold text-white">
-                    Hasil Optimasi
-                  </h2>
+
+          {/* Category tabs — mobile dropdown / desktop list */}
+          <div style={{ padding: "12px 16px", borderBottom: "1px solid var(--border-subtle)" }}>
+            {/* Mobile: dropdown */}
+            <div className="lg:hidden">
+              <button
+                onClick={() => setCatOpen(!catOpen)}
+                style={{
+                  width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between",
+                  padding: "8px 12px",
+                  background: "var(--bg-elevated)", border: "1px solid var(--border-subtle)",
+                  borderRadius: "var(--radius-sm)", color: "var(--text-primary)", cursor: "pointer",
+                  fontSize: 13,
+                }}
+              >
+                <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <CurIcon size={13} style={{ color: "var(--accent-green)" }} />
+                  {activeTab}
+                </span>
+                <ChevronDown size={13} style={{ transform: catOpen ? "rotate(180deg)" : "none", transition: "transform 0.15s" }} />
+              </button>
+              {catOpen && (
+                <div style={{
+                  marginTop: 4, background: "var(--bg-elevated)",
+                  border: "1px solid var(--border-subtle)", borderRadius: "var(--radius-sm)",
+                  overflow: "hidden",
+                }}>
+                  {(Object.keys(CATEGORIES) as CatKey[]).map((cat) => {
+                    const Icon = CATEGORIES[cat].icon;
+                    return (
+                      <button
+                        key={cat}
+                        onClick={() => { setActiveTab(cat); setCatOpen(false); }}
+                        style={{
+                          width: "100%", display: "flex", alignItems: "center", gap: 8,
+                          padding: "8px 12px", background: cat === activeTab ? "rgba(57,211,83,0.08)" : "transparent",
+                          color: cat === activeTab ? "var(--accent-green)" : "var(--text-secondary)",
+                          border: "none", cursor: "pointer", fontSize: 13, textAlign: "left",
+                        }}
+                      >
+                        <Icon size={13} /> {cat}
+                      </button>
+                    );
+                  })}
                 </div>
-                {completedSteps.size > 0 && (
-                  <button
-                    onClick={resetCompletedSteps}
-                    className="px-3 py-1 bg-gray-700 hover:bg-gray-600 text-white text-xs rounded-lg transition-colors"
-                  >
-                    Reset Progress
-                  </button>
-                )}
-              </div>
+              )}
             </div>
-            <div className="p-4 sm:p-6">
-              {error && (
-                <div className="mb-4 sm:mb-6 p-3 sm:p-4 bg-red-900/50 border border-red-700 rounded-xl backdrop-blur-sm">
-                  <div className="flex items-center">
-                    <div className="flex-shrink-0">
-                      <div className="h-5 w-5 sm:h-6 sm:w-6 text-red-400 flex items-center justify-center">
-                        ⚠
-                      </div>
-                    </div>
-                    <div className="ml-3">
-                      {" "}
-                      <h3 className="text-xs sm:text-sm font-medium text-red-300">
-                        Error
-                      </h3>
-                      <p className="text-xs sm:text-sm text-red-200 mt-1">
-                        {error}
-                      </p>
+
+            {/* Desktop: horizontal scroll tabs */}
+            <div className="hidden lg:flex" style={{ gap: 4, overflowX: "auto" }}>
+              {(Object.keys(CATEGORIES) as CatKey[]).map((cat) => {
+                const Icon = CATEGORIES[cat].icon;
+                return (
+                  <button
+                    key={cat}
+                    className={`cat-tab${cat === activeTab ? " active" : ""}`}
+                    onClick={() => setActiveTab(cat)}
+                  >
+                    <Icon size={12} />
+                    <span style={{ fontSize: 12 }}>{cat}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Items grid */}
+          <div style={{ padding: "16px", overflowY: "auto", maxHeight: 600 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 10 }}>
+              {CATEGORIES[activeTab].items.map((item) => {
+                const price = getPrice(item);
+                const val = inventory[item] ?? 0;
+                return (
+                  <div key={item} className="inv-card">
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      value={val === 0 ? "" : val.toLocaleString()}
+                      onChange={(e) => handleChange(item, e.target.value)}
+                      placeholder="0"
+                    />
+                    <div className="item-name">{fmt(item)}</div>
+                    <div style={{ textAlign: "center" }}>
+                      {price > 0 ? (
+                        <span className="tag tag-green" style={{ fontSize: 9 }}>${price}/unit</span>
+                      ) : (
+                        <span className="tag tag-muted" style={{ fontSize: 9 }}>raw</span>
+                      )}
                     </div>
                   </div>
-                </div>
-              )}
-
-              {result ? (
-                <div className="space-y-4 sm:space-y-6">
-                  {/* Summary Cards */}
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
-                    <div className="group bg-gradient-to-br from-green-900/50 to-emerald-900/50 border border-green-700 rounded-xl p-4 sm:p-5 hover:shadow-green-500/20 hover:shadow-lg transition-all duration-300">
-                      <div className="flex items-center">
-                        <div className="p-1.5 sm:p-2 bg-green-600 rounded-lg">
-                          <DollarSign className="h-6 w-6 sm:h-8 sm:w-8 text-white" />
-                        </div>
-                        <div className="ml-3 sm:ml-4">
-                          {" "}
-                          <p className="text-xs sm:text-sm font-medium text-green-300">
-                            Total Keuntungan
-                          </p>
-                          <p className="text-lg sm:text-2xl font-bold text-green-100">
-                            {formatCurrency(result.summary.totalProfit)}
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                    <div className="group bg-gradient-to-br from-blue-900/50 to-cyan-900/50 border border-blue-700 rounded-xl p-4 sm:p-5 hover:shadow-blue-500/20 hover:shadow-lg transition-all duration-300">
-                      <div className="flex items-center">
-                        <div className="p-1.5 sm:p-2 bg-blue-600 rounded-lg">
-                          <Timer className="h-6 w-6 sm:h-8 sm:w-8 text-white" />
-                        </div>
-                        <div className="ml-3 sm:ml-4">
-                          {" "}
-                          <p className="text-xs sm:text-sm font-medium text-blue-300">
-                            Total Waktu (Smelting)
-                          </p>
-                          <p className="text-lg sm:text-2xl font-bold text-blue-100">
-                            {result.summary.totalTimeFormatted}
-                          </p>
-                        </div>
-                      </div>
-                    </div>{" "}
-                    <div className="group bg-gradient-to-br from-purple-900/50 to-pink-900/50 border border-purple-700 rounded-xl p-4 sm:p-5 hover:shadow-purple-500/20 hover:shadow-lg transition-all duration-300 sm:col-span-1 col-span-1">
-                      <div className="flex items-center">
-                        <div className="p-1.5 sm:p-2 bg-purple-600 rounded-lg">
-                          <Coins className="h-6 w-6 sm:h-8 sm:w-8 text-white" />
-                        </div>
-                        <div className="ml-3 sm:ml-4">
-                          {" "}
-                          <p className="text-xs sm:text-sm font-medium text-purple-300">
-                            Total Jual Semua Item
-                          </p>
-                          <p className="text-lg sm:text-2xl font-bold text-purple-100">
-                            {formatCurrency(result.summary.totalSellValue)}
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  </div>{" "}
-                  {/* Production Steps */}
-                  {result.productionSteps.length > 0 && (
-                    <div className="bg-gradient-to-br from-blue-900/30 to-cyan-900/30 border border-blue-700 rounded-xl overflow-hidden">
-                      {" "}
-                      <div className="px-4 sm:px-6 py-3 sm:py-4 border-b border-blue-700 bg-blue-900/20">
-                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                          <div className="flex items-center space-x-2">
-                            <Hammer className="h-4 w-4 sm:h-5 sm:w-5 text-blue-400" />{" "}
-                            <h3 className="text-base sm:text-lg font-semibold text-blue-100">
-                              Langkah Produksi ({result.productionSteps.length})
-                            </h3>
-                          </div>
-
-                          <div className="flex items-center gap-4">
-                            {/* Profit Legend */}
-                            <div className="flex items-center space-x-3 text-xs">
-                              {" "}
-                              <div className="flex items-center space-x-1">
-                                <div className="w-3 h-3 bg-green-600 rounded-full"></div>
-                                <span className="text-green-300">
-                                  Untung Tinggi
-                                </span>
-                              </div>
-                              <div className="flex items-center space-x-1">
-                                <div className="w-3 h-3 bg-blue-600 rounded-full"></div>
-                                <span className="text-blue-300">Sedang</span>
-                              </div>
-                              <div className="flex items-center space-x-1">
-                                <div className="w-3 h-3 bg-orange-600 rounded-full"></div>
-                                <span className="text-orange-300">Rendah</span>
-                              </div>
-                            </div>{" "}
-                            {completedSteps.size > 0 && (
-                              <span className="text-xs text-green-400">
-                                {completedSteps.size} selesai
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                      <div className="p-4 sm:p-6">
-                        <div className="space-y-3 sm:space-y-4 max-h-96 sm:max-h-[500px] overflow-y-auto custom-scrollbar">
-                          {" "}
-                          {result.productionSteps.map((step, index) => {
-                            const profitTier = getProfitTier(
-                              step.value,
-                              result.productionSteps
-                            );
-                            const profitColors = getProfitColors(profitTier);
-
-                            return (
-                              <div
-                                key={index}
-                                className={`relative rounded-xl p-4 sm:p-5 transition-all duration-300 ${profitColors.bg} ${profitColors.border} ${profitColors.glow} border-2 ${
-                                  completedSteps.has(index)
-                                    ? "border-green-500/70 bg-green-900/30 opacity-75"
-                                    : `${profitColors.border} hover:border-opacity-80`
-                                }`}
-                              >
-                                <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start mb-3 sm:mb-4 gap-2">
-                                  <span
-                                    className={`font-semibold text-base sm:text-lg ${
-                                      completedSteps.has(index)
-                                        ? "text-green-300 line-through"
-                                        : `text-white`
-                                    }`}
-                                  >
-                                    {step.displayName} ×
-                                    {step.quantity.toLocaleString()}
-                                  </span>
-                                  <div className="flex items-center gap-3">
-                                    <span
-                                      className={`font-bold text-lg sm:text-xl ${
-                                        completedSteps.has(index)
-                                          ? "text-green-300"
-                                          : profitColors.text
-                                      }`}
-                                    >
-                                      {formatCurrency(step.value)}
-                                    </span>
-                                    <button
-                                      onClick={() =>
-                                        toggleStepCompletion(index)
-                                      }
-                                      className={`p-2 ${
-                                        completedSteps.has(index)
-                                          ? "bg-yellow-600 hover:bg-yellow-700"
-                                          : "bg-blue-600 hover:bg-blue-700"
-                                      } text-white rounded-lg transition-colors group`}
-                                      title={
-                                        completedSteps.has(index)
-                                          ? "Unmark Step"
-                                          : "Mark as Done"
-                                      }
-                                    >
-                                      {completedSteps.has(index) ? (
-                                        <CircleX className="h-4 w-4" />
-                                      ) : (
-                                        <CheckCircle2 className="h-4 w-4" />
-                                      )}
-                                    </button>
-                                  </div>
-                                </div>
-                                {step.requirements.length > 0 && (
-                                  <div className="text-xs sm:text-sm text-gray-300 mb-3 bg-gray-900/50 p-2 sm:p-3 rounded-lg border border-gray-600">
-                                    {" "}
-                                    <strong className="text-blue-300">
-                                      Kebutuhan:
-                                    </strong>{" "}
-                                    {step.requirements
-                                      .map((req: RequirementInfo) => (
-                                        <span
-                                          key={req.item}
-                                          className="text-gray-300"
-                                        >
-                                          {req.displayName} ×
-                                          {req.quantity.toLocaleString()}
-                                        </span>
-                                      ))
-                                      .reduce(
-                                        (
-                                          prev: React.ReactNode,
-                                          curr: React.ReactNode
-                                        ) => (prev ? [prev, ", ", curr] : curr),
-                                        null as React.ReactNode
-                                      )}
-                                  </div>
-                                )}{" "}
-                                {/* Cost and Profit Margin Info */}
-                                {step.opportunityCost &&
-                                  step.opportunityCost > 0 && (
-                                    <div className="mb-3 p-2 sm:p-3 bg-gray-800/50 rounded-lg border border-gray-600">
-                                      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2">
-                                        <div className="flex items-center space-x-2">
-                                          <span className="text-xs text-orange-400">
-                                            💰 Cost:
-                                          </span>
-                                          <span className="text-xs font-mono text-orange-300">
-                                            {formatCurrency(
-                                              step.opportunityCost
-                                            )}
-                                          </span>
-                                        </div>
-                                        {step.profitMargin &&
-                                          step.profitMargin > 0 && (
-                                            <div className="flex items-center space-x-2">
-                                              <span className="text-xs text-green-400">
-                                                📈 Margin:
-                                              </span>
-                                              <span className="text-xs font-mono text-green-300">
-                                                +{step.profitMargin.toFixed(1)}%
-                                              </span>
-                                            </div>
-                                          )}
-                                      </div>
-                                    </div>
-                                  )}
-                                <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2">
-                                  <div className="flex items-center space-x-2 text-gray-400">
-                                    <Clock className="h-3 w-3 sm:h-4 sm:w-4" />
-                                    <span className="text-xs sm:text-sm">
-                                      {step.timeFormatted}
-                                    </span>
-                                  </div>
-                                  <div
-                                    className={`flex items-center space-x-2 ${profitColors.text}`}
-                                  >
-                                    <TrendingUp className="h-3 w-3 sm:h-4 sm:w-4" />
-                                    <span className="text-xs sm:text-sm font-semibold">
-                                      ${Math.round(step.value / step.quantity)}
-                                      /unit
-                                    </span>
-                                  </div>
-                                </div>
-                                {completedSteps.has(index) && (
-                                  <div className="absolute inset-0 bg-green-500/10 rounded-xl pointer-events-none"></div>
-                                )}
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                  {/* Sellable Items */}
-                  {result.sellableItems.length > 0 && (
-                    <div className="bg-gradient-to-br from-green-900/30 to-emerald-900/30 border border-green-700 rounded-xl overflow-hidden">
-                      <div className="px-4 sm:px-6 py-3 sm:py-4 border-b border-green-700 bg-green-900/20">
-                        <div className="flex items-center space-x-2">
-                          <CheckCircle2 className="h-4 w-4 sm:h-5 sm:w-5 text-green-400" />{" "}
-                          <h3 className="text-base sm:text-lg font-semibold text-green-100">
-                            Item yang Bisa Dijual ({result.sellableItems.length}
-                            )
-                          </h3>
-                        </div>
-                      </div>
-                      <div className="p-4 sm:p-6">
-                        <div className="space-y-2 sm:space-y-3 max-h-32 sm:max-h-40 overflow-y-auto custom-scrollbar">
-                          {result.sellableItems.map((item, index) => (
-                            <div
-                              key={index}
-                              className="flex justify-between items-center bg-gray-800/50 p-3 sm:p-4 rounded-lg border border-gray-700 hover:border-green-500/50 transition-all duration-200"
-                            >
-                              <span className="font-medium text-gray-200 text-sm sm:text-base">
-                                {item.name} ×{item.quantity.toLocaleString()}
-                              </span>
-                              <span className="font-bold text-green-400 text-base sm:text-lg">
-                                {formatCurrency(item.value)}
-                              </span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    </div>
-                  )}{" "}
-                </div>
-              ) : (
-                <div className="text-center py-8 sm:py-16">
-                  <div className="relative">
-                    <Settings className="h-16 w-16 sm:h-20 sm:w-20 text-gray-600 mx-auto mb-4 sm:mb-6 animate-pulse" />
-                    <div className="absolute inset-0 flex items-center justify-center">
-                      <Sparkles className="h-6 w-6 sm:h-8 sm:w-8 text-blue-400 animate-pulse" />
-                    </div>
-                  </div>{" "}
-                  <h3 className="text-xl sm:text-2xl font-bold text-white mb-2 sm:mb-3">
-                    Siap untuk Optimasi
-                  </h3>{" "}
-                  <p className="text-gray-400 text-sm sm:text-lg max-w-md mx-auto px-4">
-                    Masukkan jumlah inventory Anda dan klik &quot;Hitung
-                    Optimasi&quot; untuk menemukan strategi crafting yang paling
-                    menguntungkan
-                  </p>
-                </div>
-              )}
+                );
+              })}
             </div>
           </div>
         </div>
+
+        {/* Right: Results */}
+        <div className="card" style={{ overflow: "hidden", display: "flex", flexDirection: "column" }}>
+          <div
+            style={{
+              padding: "14px 20px",
+              borderBottom: "1px solid var(--border-subtle)",
+              display: "flex", alignItems: "center", justifyContent: "space-between",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <BarChart3 size={15} style={{ color: "var(--accent-green)" }} />
+              <span style={{ fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 14 }}>Hasil Optimasi</span>
+            </div>
+            {completed.size > 0 && (
+              <button
+                className="btn-ghost"
+                onClick={() => { setCompleted(new Set()); handleOptimize(); }}
+              >
+                <RotateCcw size={11} /> Reset Progress
+              </button>
+            )}
+          </div>
+
+          <div style={{ flex: 1, overflowY: "auto", padding: "20px" }}>
+
+            {/* Error */}
+            {error && (
+              <div
+                className="animate-in"
+                style={{
+                  marginBottom: 16, padding: "12px 16px",
+                  background: "rgba(248,81,73,0.08)", border: "1px solid rgba(248,81,73,0.3)",
+                  borderRadius: "var(--radius-md)", display: "flex", gap: 10, alignItems: "flex-start",
+                }}
+              >
+                <AlertCircle size={16} style={{ color: "var(--accent-red)", flexShrink: 0, marginTop: 1 }} />
+                <div>
+                  <div style={{ fontWeight: 600, fontSize: 12, color: "var(--accent-red)", marginBottom: 2 }}>Error</div>
+                  <div style={{ fontSize: 12, color: "var(--text-secondary)" }}>{error}</div>
+                </div>
+              </div>
+            )}
+
+            {result ? (
+              <div className="animate-in" style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+
+                {/* Summary */}
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}>
+                  <div className="summary-card" style={{ background: "rgba(57,211,83,0.06)", borderColor: "rgba(57,211,83,0.2)" }}>
+                    <span className="label">Net Profit</span>
+                    <span className="value" style={{ color: "var(--accent-green)", fontSize: 18 }}>
+                      {fmtUSD(result.summary.totalProfit)}
+                    </span>
+                  </div>
+                  <div className="summary-card" style={{ background: "rgba(88,166,255,0.06)", borderColor: "rgba(88,166,255,0.2)" }}>
+                    <span className="label">Total Jual</span>
+                    <span className="value" style={{ color: "var(--accent-blue)", fontSize: 18 }}>
+                      {fmtUSD(result.summary.totalSellValue)}
+                    </span>
+                  </div>
+                  <div className="summary-card" style={{ background: "rgba(212,160,23,0.06)", borderColor: "rgba(212,160,23,0.2)" }}>
+                    <span className="label">Waktu</span>
+                    <span className="value" style={{ color: "var(--accent-gold)", fontSize: 18 }}>
+                      {result.summary.totalTimeFormatted}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Production steps */}
+                {result.productionSteps.length > 0 && (
+                  <div>
+                    {/* Section header */}
+                    <div
+                      style={{
+                        display: "flex", alignItems: "center", justifyContent: "space-between",
+                        marginBottom: 10,
+                      }}
+                    >
+                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <TrendingUp size={13} style={{ color: "var(--accent-green)" }} />
+                        <span style={{ fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 13 }}>
+                          Langkah Produksi
+                        </span>
+                        <span className="tag tag-muted">{result.productionSteps.length}</span>
+                      </div>
+                      {/* Legend */}
+                      <div style={{ display: "flex", gap: 8 }}>
+                        {(["high","mid","low"] as const).map((t) => (
+                          <span key={t} style={{ fontSize: 10, color: "var(--text-muted)", display: "flex", alignItems: "center", gap: 4 }}>
+                            <span style={{ width: 6, height: 6, borderRadius: "50%", background: tierStyle[t].bar, display: "inline-block" }} />
+                            {t === "high" ? "Tinggi" : t === "mid" ? "Sedang" : "Rendah"}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 440, overflowY: "auto" }}>
+                      {result.productionSteps.map((step, idx) => {
+                        const tier = tierOf(step.value, result.productionSteps) as "high"|"mid"|"low";
+                        const ts = tierStyle[tier];
+                        const done = completed.has(idx);
+                        return (
+                          <div
+                            key={idx}
+                            className={`step-card tier-${tier}${done ? " completed" : ""}`}
+                            style={{ "--bar": ts.bar } as React.CSSProperties}
+                          >
+                            <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8 }}>
+                              {/* Left */}
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+                                  <span
+                                    style={{
+                                      fontFamily: "'Syne', sans-serif",
+                                      fontWeight: 700,
+                                      fontSize: 14,
+                                      color: done ? "var(--text-muted)" : "var(--text-primary)",
+                                      textDecoration: done ? "line-through" : "none",
+                                    }}
+                                  >
+                                    {step.displayName}
+                                  </span>
+                                  <span className="tag tag-muted">×{step.quantity.toLocaleString()}</span>
+                                </div>
+
+                                {/* Requirements */}
+                                {step.requirements.length > 0 && (
+                                  <div
+                                    style={{
+                                      fontSize: 11, color: "var(--text-secondary)",
+                                      background: "var(--bg-base)", padding: "6px 10px",
+                                      borderRadius: "var(--radius-sm)", marginBottom: 8,
+                                      border: "1px solid var(--border-subtle)",
+                                    }}
+                                  >
+                                    <span style={{ color: "var(--text-muted)", marginRight: 6 }}>requires:</span>
+                                    {step.requirements.map((r: RequirementInfo, ri: number) => (
+                                      <span key={r.item}>
+                                        {ri > 0 && <span style={{ color: "var(--text-muted)" }}>, </span>}
+                                        <span style={{ color: "var(--text-primary)" }}>{r.displayName}</span>
+                                        <span style={{ color: "var(--text-muted)" }}>×{r.quantity.toLocaleString()}</span>
+                                      </span>
+                                    ))}
+                                  </div>
+                                )}
+
+                                {/* Meta row */}
+                                <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+                                  <span style={{ fontSize: 11, color: "var(--text-muted)", display: "flex", alignItems: "center", gap: 4 }}>
+                                    <Clock size={10} /> {step.timeFormatted}
+                                  </span>
+                                  {step.opportunityCost && step.opportunityCost > 0 && (
+                                    <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
+                                      cost: <span style={{ color: "var(--accent-orange)" }}>{fmtUSD(step.opportunityCost)}</span>
+                                    </span>
+                                  )}
+                                  {step.profitMargin && step.profitMargin > 0 && (
+                                    <span className={`tag ${ts.tag}`} style={{ fontSize: 9 }}>
+                                      +{step.profitMargin.toFixed(1)}% margin
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+
+                              {/* Right */}
+                              <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 8, flexShrink: 0 }}>
+                                <span
+                                  style={{
+                                    fontFamily: "'Syne', sans-serif",
+                                    fontWeight: 800,
+                                    fontSize: 16,
+                                    color: ts.val,
+                                  }}
+                                >
+                                  {fmtUSD(step.value)}
+                                </span>
+                                <button
+                                  className={`check-btn${done ? " checked" : ""}`}
+                                  onClick={() => toggleDone(idx)}
+                                  title={done ? "Unmark" : "Mark done"}
+                                >
+                                  {done ? <CheckCircle2 size={14} /> : <Circle size={14} />}
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* Sellable items */}
+                {result.sellableItems.length > 0 && (
+                  <div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+                      <ShoppingBag size={13} style={{ color: "var(--accent-green)" }} />
+                      <span style={{ fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 13 }}>
+                        Item Siap Jual
+                      </span>
+                      <span className="tag tag-muted">{result.sellableItems.length}</span>
+                    </div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: 200, overflowY: "auto" }}>
+                      {result.sellableItems.map((item, i) => (
+                        <div key={i} className="sell-row">
+                          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                            <CheckCheck size={12} style={{ color: "var(--accent-green)" }} />
+                            <span style={{ fontSize: 13, color: "var(--text-primary)" }}>
+                              {item.name}
+                            </span>
+                            <span className="tag tag-muted" style={{ fontSize: 9 }}>×{item.quantity}</span>
+                          </div>
+                          <span style={{ fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 14, color: "var(--accent-green)" }}>
+                            {fmtUSD(item.value)}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : (
+              /* Empty state */
+              <div className="empty-state">
+                <div
+                  style={{
+                    width: 64, height: 64, borderRadius: "50%",
+                    background: "var(--bg-elevated)",
+                    border: "1px solid var(--border-subtle)",
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    fontSize: 28, marginBottom: 8,
+                  }}
+                >
+                  ⛏
+                </div>
+                <div style={{ fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 18, color: "var(--text-primary)" }}>
+                  Siap Optimasi
+                </div>
+                <div style={{ fontSize: 13, color: "var(--text-secondary)", maxWidth: 300, lineHeight: 1.6 }}>
+                  Masukkan jumlah item di inventory lalu klik &ldquo;Hitung Optimasi&rdquo; untuk hasil terbaik
+                </div>
+                {totalItems === 0 && (
+                  <span className="tag tag-muted" style={{ marginTop: 4 }}>
+                    Inventory kosong
+                  </span>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+
       </div>
     </div>
   );
