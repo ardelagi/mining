@@ -32,6 +32,8 @@
   --radius-md: 10px;
   --radius-lg: 16px;
   --radius-xl: 24px;
+
+  --navbar-height: 64px;
 }
 
 * {
@@ -92,6 +94,16 @@ body::before {
 }
 .floating-icon { animation: float var(--dur, 15s) var(--delay, 0s) infinite ease-in-out; }
 .floating-icon:nth-child(even) { animation-name: floatB; }
+
+/* ── Mobile nav helpers ── */
+@media (max-width: 768px) {
+  .hidden-mobile { display: none !important; }
+  .show-mobile { display: flex !important; }
+}
+@media (min-width: 769px) {
+  .show-mobile { display: none !important; }
+  .hidden-mobile { display: flex !important; }
+}
 
 /* ── Stat pill ── */
 .stat-pill {
@@ -311,27 +323,6 @@ body::before {
 .step-card.tier-mid::before  { background: var(--accent-blue); }
 .step-card.tier-low::before  { background: var(--accent-orange); }
 
-/* ── Nav ── */
-.nav-link {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 16px;
-  border-radius: 999px;
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 13px;
-  color: var(--text-secondary);
-  text-decoration: none;
-  transition: all 0.15s;
-  border: 1px solid transparent;
-}
-.nav-link:hover { color: var(--text-primary); background: var(--bg-elevated); }
-.nav-link.active {
-  color: var(--accent-green);
-  background: rgba(57, 211, 83, 0.08);
-  border-color: rgba(57, 211, 83, 0.25);
-}
-
 /* ── Summary card ── */
 .summary-card {
   border-radius: var(--radius-md);
@@ -424,3 +415,14 @@ select.styled:focus { border-color: var(--accent-blue); }
 }
 .check-btn:hover { border-color: var(--accent-green); color: var(--accent-green); background: rgba(57, 211, 83, 0.08); }
 .check-btn.checked { background: rgba(57, 211, 83, 0.12); border-color: var(--accent-green); color: var(--accent-green); }
+
+/* ── Hero animation override (auto-play opacity) ── */
+@keyframes hero-fade-up {
+  from { opacity: 0; transform: translateY(16px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+h1[style*="opacity: 0"],
+p[style*="opacity: 0"],
+div[style*="opacity: 0"] {
+  animation: hero-fade-up 0.6s ease forwards;
+}
